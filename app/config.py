@@ -1,5 +1,4 @@
+# YouTube channels to scrape for AI content
 YOUTUBE_CHANNELS = [
-    # "UCn8ujwUInbJkBhffxqAPBVQ", # Dave Ebbelaar
-    "UCawZsQWqfGSbCI5yjkdVkTA", # Matthew Berman
+    "UCawZsQWqfGSbCI5yjkdVkTA",  # Matthew Berman - AI News & Reviews
 ]
-
