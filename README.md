@@ -22,18 +22,18 @@ An intelligent, fully automated AI news aggregation system that scrapes, summari
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    DATA GATHERING LAYER                      │
+│                    DATA GATHERING LAYER                     │
 │                                                             │
 │   ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
-│   │   YouTube     │  │  OpenAI Blog │  │  Anthropic Blog  │  │
-│   │   Scraper     │  │   Scraper    │  │    Scraper       │  │
+│   │   YouTube    │  │  OpenAI Blog │  │  Anthropic Blog  │  │
+│   │   Scraper    │  │   Scraper    │  │    Scraper       │  │
 │   └──────┬───────┘  └──────┬───────┘  └────────┬─────────┘  │
-│          └─────────────────┼───────────────────┘             │
-│                            ▼                                 │
-│                    ┌──────────────┐                           │
-│                    │    SQLite    │                           │
-│                    │   Database   │                           │
-│                    └──────┬──────┘                            │
+│          └─────────────────┼───────────────────┘            │
+│                            ▼                                │
+│                    ┌──────────────┐                         │
+│                    │    SQLite    │                         │
+│                    │   Database   │                         │
+│                    └──────┬──────┘                          │
 └───────────────────────────┼──────────────────────────────────┘
                             │
 ┌───────────────────────────┼──────────────────────────────────┐
@@ -41,20 +41,20 @@ An intelligent, fully automated AI news aggregation system that scrapes, summari
 │                           ▼                                  │
 │    ┌─────────────────────────────────────────────┐           │
 │    │     Agent 1: DIGEST AGENT                   │           │
-│    │  Summarizes raw articles into concise        │           │
-│    │  structured digests using Groq LLM           │           │
+│    │  Summarizes raw articles into concise       │           │
+│    │  structured digests using Groq LLM          │           │
 │    └──────────────────┬──────────────────────────┘           │
 │                       ▼                                      │
 │    ┌─────────────────────────────────────────────┐           │
-│    │   Agent 2: CURATOR AGENT                  │           │
-│    │  Scores & ranks digests against user profile │           │
-│    │  (interests, expertise, preferences)         │           │
+│    │   Agent 2: CURATOR AGENT                  │             │
+│    │  Scores & ranks digests against user profile │          │
+│    │  (interests, expertise, preferences)         │          │
 │    └──────────────────┬──────────────────────────┘           │
 │                       ▼                                      │
 │    ┌─────────────────────────────────────────────┐           │
 │    │     Agent 3: EMAIL AGENT                    │           │
-│    │  Writes personalized greeting & formats      │           │
-│    │  the final newsletter with top articles      │           │
+│    │  Writes personalized greeting & formats     │           │
+│    │  the final newsletter with top articles     │           │
 │    └──────────────────┬──────────────────────────┘           │
 │                       │                                      │
 └───────────────────────┼──────────────────────────────────────┘
@@ -63,12 +63,12 @@ An intelligent, fully automated AI news aggregation system that scrapes, summari
 │                  DELIVERY LAYER                              │
 │                       ▼                                      │
 │   ┌──────────────────────────────────────────┐               │
-│   │         Gmail SMTP (smtplib)              │               │
-│   │  Sends branded HTML email to your inbox   │               │
+│   │         Gmail SMTP (smtplib)             │               │
+│   │  Sends branded HTML email to your inbox  │               │
 │   └──────────────────────────────────────────┘               │
 │   ┌──────────────────────────────────────────┐               │
-│   │      Local Backup (output/ directory)     │               │
-│   │  Saves latest_digest.html as fallback     │               │
+│   │      Local Backup (output/ directory)    │               │
+│   │  Saves latest_digest.html as fallback    │               │
 │   └──────────────────────────────────────────┘               │
 └──────────────────────────────────────────────────────────────┘
 ```
