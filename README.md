@@ -1,4 +1,4 @@
-# 🤖 AI News Aggregator — Multi-Agent GenAI Pipeline
+# AI News Aggregator — Multi-Agent GenAI Pipeline
 
 An intelligent, fully automated AI news aggregation system that scrapes, summarizes, curates, and delivers personalized daily AI newsletters — powered by a **multi-agent architecture** using open-source LLMs via **Groq**, with zero paid API dependencies.
 
@@ -6,7 +6,7 @@ An intelligent, fully automated AI news aggregation system that scrapes, summari
 
 ---
 
-## ✨ Key Features
+## Key Features
 
 - **Multi-Agent AI Pipeline** — Three specialized AI agents (Digest, Curator, Email) collaborate to process raw news into personalized newsletters
 - **100% Free & Open-Source Stack** — Uses Groq's free-tier inference on open-source LLMs instead of paid OpenAI/GPT APIs
@@ -18,7 +18,7 @@ An intelligent, fully automated AI news aggregation system that scrapes, summari
 
 ---
 
-## 🏗️ System Architecture
+##  System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -40,19 +40,19 @@ An intelligent, fully automated AI news aggregation system that scrapes, summari
 │              MULTI-AGENT AI PROCESSING LAYER                 │
 │                           ▼                                  │
 │    ┌─────────────────────────────────────────────┐           │
-│    │  🧠 Agent 1: DIGEST AGENT                   │           │
+│    │     Agent 1: DIGEST AGENT                   │           │
 │    │  Summarizes raw articles into concise        │           │
 │    │  structured digests using Groq LLM           │           │
 │    └──────────────────┬──────────────────────────┘           │
 │                       ▼                                      │
 │    ┌─────────────────────────────────────────────┐           │
-│    │  📊 Agent 2: CURATOR AGENT                  │           │
+│    │   Agent 2: CURATOR AGENT                  │           │
 │    │  Scores & ranks digests against user profile │           │
 │    │  (interests, expertise, preferences)         │           │
 │    └──────────────────┬──────────────────────────┘           │
 │                       ▼                                      │
 │    ┌─────────────────────────────────────────────┐           │
-│    │  ✉️  Agent 3: EMAIL AGENT                    │           │
+│    │     Agent 3: EMAIL AGENT                    │           │
 │    │  Writes personalized greeting & formats      │           │
 │    │  the final newsletter with top articles      │           │
 │    └──────────────────┬──────────────────────────┘           │
@@ -75,7 +75,7 @@ An intelligent, fully automated AI news aggregation system that scrapes, summari
 
 ---
 
-## 🆓 Free Alternatives Used (Zero-Cost Stack)
+##  Free Alternatives Used (Zero-Cost Stack)
 
 This project was originally designed around paid services. Every paid dependency has been replaced with a **100% free alternative**:
 
@@ -153,7 +153,7 @@ ai-news-aggregator/
 
 ---
 
-## 🚀 Getting Started (Step-by-Step Execution Guide)
+##  Getting Started (Step-by-Step Execution Guide)
 
 ### Prerequisites
 - **Python 3.10+** installed ([download](https://www.python.org/downloads/))
@@ -183,7 +183,7 @@ APP_PASSWORD=your_gmail_app_password
 USE_POSTGRES=false
 SQLITE_PATH=ai_news_aggregator.db
 ```
-> ⚠️ **Never commit `.env` to GitHub** — it's already in `.gitignore`.
+>  **Never commit `.env` to GitHub** — it's already in `.gitignore`.
 
 ### Step 3: Install Python Dependencies
 ```bash
@@ -296,7 +296,7 @@ The project includes a GitHub Actions workflow that runs the pipeline automatica
 
 ---
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
@@ -310,7 +310,7 @@ The project includes a GitHub Actions workflow that runs the pipeline automatica
 
 ---
 
-## 📄 License
+##  License
 
 This project is open-source and available under the [MIT License](LICENSE).
 
