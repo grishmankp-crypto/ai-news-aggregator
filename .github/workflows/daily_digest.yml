@@ -9,6 +9,7 @@ on:
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -38,4 +39,17 @@ jobs:
           APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
           USE_POSTGRES: "false"
         run: |
+          python main.py
+
+      - name: Retry Pipeline on Failure
+        if: failure()
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL: "groq/compound-mini"
+          MY_EMAIL: ${{ secrets.MY_EMAIL }}
+          APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
+          USE_POSTGRES: "false"
+        run: |
+          echo "First attempt failed. Retrying after 30s..."
+          sleep 30
           python main.py

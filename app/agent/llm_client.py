@@ -109,10 +109,22 @@ JSON Schema:
 
             return TypeAdapter(response_model).validate_json(raw_content)
         except Exception as e:
-            err_msg = str(e)
-            if ("429" in err_msg or "rate_limit" in err_msg) and attempt < max_retries - 1:
-                wait_secs = (attempt + 1) * 6
-                logger.warning(f"Rate limit hit (429). Retrying in {wait_secs}s... (attempt {attempt + 1}/{max_retries})")
+            err_msg = str(e).lower()
+            is_retryable = (
+                "429" in err_msg
+                or "rate_limit" in err_msg
+                or "connection" in err_msg
+                or "timeout" in err_msg
+                or "500" in err_msg
+                or "502" in err_msg
+                or "503" in err_msg
+                or "504" in err_msg
+                or "connecterror" in err_msg
+                or "remotedisconnected" in err_msg
+            )
+            if is_retryable and attempt < max_retries - 1:
+                wait_secs = (attempt + 1) * 8
+                logger.warning(f"Retryable error: {type(e).__name__}. Retrying in {wait_secs}s... (attempt {attempt + 1}/{max_retries})")
                 time.sleep(wait_secs)
             else:
                 raise e
