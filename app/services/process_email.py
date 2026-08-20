@@ -124,39 +124,49 @@ def send_digest_to_all_users(hours: int = 24, top_n: int = 10) -> dict:
         logger.info("No registered users found. Falling back to single-user mode.")
         return send_digest_email(hours=hours, top_n=top_n)
     
-    logger.info(f"Sending personalized digests to {len(users)} active users")
+    # Cache user data upfront so we don't depend on a live DB connection later.
+    # Neon free tier closes idle connections after ~5min, and Groq rate limiting
+    # can make the loop take 15+ minutes, causing "server closed connection" errors.
+    user_cache = []
+    for user in users:
+        user_cache.append({
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "profile": repo.get_user_profile_dict(user)
+        })
+    
+    logger.info(f"Sending personalized digests to {len(user_cache)} active users")
     
     results = {
         "success": True,
-        "total_users": len(users),
+        "total_users": len(user_cache),
         "sent": 0,
         "failed": 0,
         "details": []
     }
     
-    for user in users:
-        user_profile = repo.get_user_profile_dict(user)
-        
+    for u in user_cache:
         try:
-            logger.info(f"Generating digest for {user.name} ({user.email})")
+            logger.info(f"Generating digest for {u['name']} ({u['email']})")
             
             # Generate personalized digest
             email_digest = generate_email_digest(
                 hours=hours, 
                 top_n=top_n, 
-                user_profile=user_profile
+                user_profile=u['profile']
             )
             
             # Render personalized HTML
             markdown_content = email_digest.to_markdown()
             html_content = digest_to_html(
                 email_digest, 
-                user_name=user.name,
-                user_email=user.email
+                user_name=u['name'],
+                user_email=u['email']
             )
             
             # Dynamic subject line
-            first_name = user.name.split()[0] if user.name else "there"
+            first_name = u['name'].split()[0] if u['name'] else "there"
             subject = f"{first_name}'s AI Radar - {email_digest.introduction.greeting.split('for ')[-1] if 'for ' in email_digest.introduction.greeting else 'Today'}"
             
             # Send email
@@ -164,12 +174,12 @@ def send_digest_to_all_users(hours: int = 24, top_n: int = 10) -> dict:
                 subject=subject,
                 body_text=markdown_content,
                 body_html=html_content,
-                recipients=[user.email]
+                recipients=[u['email']]
             )
             
-            # Log successful delivery
+            # Log successful delivery (resilient to stale connections)
             repo.log_email_sent(
-                user_id=user.id,
+                user_id=u['id'],
                 subject=subject,
                 articles_count=len(email_digest.articles),
                 status="sent"
@@ -177,17 +187,17 @@ def send_digest_to_all_users(hours: int = 24, top_n: int = 10) -> dict:
             
             results["sent"] += 1
             results["details"].append({
-                "user": user.email,
+                "user": u['email'],
                 "status": "sent",
                 "articles": len(email_digest.articles)
             })
             
-            logger.info(f"✓ Email sent to {user.email} with {len(email_digest.articles)} articles")
+            logger.info(f"✓ Email sent to {u['email']} with {len(email_digest.articles)} articles")
             
         except Exception as e:
             results["failed"] += 1
             results["details"].append({
-                "user": user.email,
+                "user": u['email'],
                 "status": "failed",
                 "error": str(e)
             })
@@ -195,7 +205,7 @@ def send_digest_to_all_users(hours: int = 24, top_n: int = 10) -> dict:
             # Log failed delivery
             try:
                 repo.log_email_sent(
-                    user_id=user.id,
+                    user_id=u['id'],
                     subject="Failed",
                     articles_count=0,
                     status="failed"
@@ -203,7 +213,7 @@ def send_digest_to_all_users(hours: int = 24, top_n: int = 10) -> dict:
             except Exception:
                 pass
             
-            logger.error(f"✗ Failed to send to {user.email}: {e}")
+            logger.error(f"✗ Failed to send to {u['email']}: {e}")
     
     results["articles_count"] = results["sent"]  # For backward compatibility
     if results["failed"] > 0 and results["sent"] == 0:

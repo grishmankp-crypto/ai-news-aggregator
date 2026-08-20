@@ -328,17 +328,49 @@ class Repository:
     # EMAIL LOG METHODS
     # ============================================================
 
+    def _get_fresh_session(self):
+        """Create a fresh database session, closing the old one safely."""
+        try:
+            self.session.rollback()
+            self.session.close()
+        except Exception:
+            pass
+        self.session = get_session()
+        return self.session
+
     def log_email_sent(self, user_id: str, subject: str, articles_count: int, status: str = "sent") -> EmailLog:
-        """Record that an email was sent to a user."""
+        """Record that an email was sent to a user. Resilient to stale DB connections."""
         log = EmailLog(
             user_id=user_id,
             subject=subject,
             articles_count=str(articles_count),
             status=status
         )
-        self.session.add(log)
-        self.session.commit()
-        return log
+        try:
+            self.session.add(log)
+            self.session.commit()
+            return log
+        except Exception as e:
+            logger.warning(f"DB connection stale, refreshing session: {e}")
+            # Get a fresh session and retry once
+            try:
+                self._get_fresh_session()
+                fresh_log = EmailLog(
+                    user_id=user_id,
+                    subject=subject,
+                    articles_count=str(articles_count),
+                    status=status
+                )
+                self.session.add(fresh_log)
+                self.session.commit()
+                return fresh_log
+            except Exception as retry_err:
+                logger.error(f"Failed to log email even after session refresh: {retry_err}")
+                try:
+                    self.session.rollback()
+                except Exception:
+                    pass
+                return None
 
     def get_user_count(self) -> int:
         """Get total number of active users."""

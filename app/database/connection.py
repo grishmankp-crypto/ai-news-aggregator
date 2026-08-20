@@ -34,7 +34,7 @@ else:
         pool_size=5,
         max_overflow=10,
         pool_pre_ping=True,
-        pool_recycle=300,
+        pool_recycle=60,  # Recycle connections every 60s (Neon free tier is aggressive)
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
