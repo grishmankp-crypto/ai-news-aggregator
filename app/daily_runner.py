@@ -8,7 +8,7 @@ from app.runner import run_scrapers
 from app.services.process_anthropic import process_anthropic_markdown
 from app.services.process_youtube import process_youtube_transcripts
 from app.services.process_digest import process_digests
-from app.services.process_email import send_digest_email
+from app.services.process_email import send_digest_email, send_digest_to_all_users
 
 logging.basicConfig(
     level=logging.INFO,
@@ -63,15 +63,17 @@ def run_daily_pipeline(hours: int = 24, top_n: int = 10) -> dict:
         logger.info(f"✓ Created {digest_result['processed']} digests "
                     f"({digest_result['failed']} failed out of {digest_result['total']} total)")
         
-        logger.info("\n[5/5] Generating and sending email digest...")
-        email_result = send_digest_email(hours=hours, top_n=top_n)
+        logger.info("\n[5/5] Generating and sending email digests...")
+        email_result = send_digest_to_all_users(hours=hours, top_n=top_n)
         results["email"] = email_result
         
         if email_result["success"]:
-            logger.info(f"✓ Email sent successfully with {email_result['articles_count']} articles")
+            sent = email_result.get("sent", 1)
+            failed = email_result.get("failed", 0)
+            logger.info(f"✓ Emails delivered: {sent} sent, {failed} failed")
             results["success"] = True
         else:
-            logger.error(f"✗ Failed to send email: {email_result.get('error', 'Unknown error')}")
+            logger.error(f"✗ Failed to send emails: {email_result.get('error', 'Unknown error')}")
         
     except Exception as e:
         logger.error(f"Pipeline failed with error: {e}", exc_info=True)

@@ -1,7 +1,8 @@
+import json
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
-from .models import YouTubeVideo, OpenAIArticle, AnthropicArticle, Digest
+from .models import YouTubeVideo, OpenAIArticle, AnthropicArticle, Digest, User, EmailLog
 from .connection import get_session
 
 
@@ -9,6 +10,10 @@ class Repository:
     def __init__(self, session: Optional[Session] = None):
         self.session = session or get_session()
     
+    # ============================================================
+    # CONTENT METHODS (unchanged from original)
+    # ============================================================
+
     def create_youtube_video(self, video_id: str, title: str, url: str, channel_id: str, 
                             published_at: datetime, description: str = "", transcript: Optional[str] = None) -> Optional[YouTubeVideo]:
         existing = self.session.query(YouTubeVideo).filter_by(video_id=video_id).first()
@@ -246,3 +251,95 @@ class Repository:
             for d in digests
         ]
 
+    # ============================================================
+    # USER METHODS (Multi-user SaaS)
+    # ============================================================
+
+    def create_user(self, email: str, name: str, interests: List[str] = None, expertise_level: str = "Intermediate") -> Optional[User]:
+        """Create a new user. Returns None if email already exists."""
+        existing = self.session.query(User).filter_by(email=email).first()
+        if existing:
+            return None
+        user = User(
+            email=email,
+            name=name,
+            interests=",".join(interests) if interests else "",
+            expertise_level=expertise_level,
+            is_active=True
+        )
+        self.session.add(user)
+        self.session.commit()
+        return user
+
+    def get_user_by_email(self, email: str) -> Optional[User]:
+        return self.session.query(User).filter_by(email=email).first()
+
+    def get_all_active_users(self) -> List[User]:
+        """Get all active users for the daily email pipeline."""
+        return self.session.query(User).filter_by(is_active=True).all()
+
+    def deactivate_user(self, email: str) -> bool:
+        """Unsubscribe a user by setting is_active=False."""
+        user = self.session.query(User).filter_by(email=email).first()
+        if user:
+            user.is_active = False
+            self.session.commit()
+            return True
+        return False
+
+    def get_user_profile_dict(self, user: User) -> Dict[str, Any]:
+        """Convert a User ORM object to a profile dict compatible with CuratorAgent/EmailAgent."""
+        raw = (user.interests or "").strip()
+        interests_list = []
+        if raw.startswith("["):
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    interests_list = [str(i).strip() for i in parsed if str(i).strip()]
+            except Exception:
+                pass
+        if not interests_list and raw:
+            interests_list = [i.strip() for i in raw.split(",") if i.strip()]
+        
+        # Default interests if user didn't select any
+        if not interests_list:
+            interests_list = [
+                "Large Language Models (LLMs)",
+                "AI Research Papers",
+                "Open-Source AI Tools"
+            ]
+        
+        return {
+            "name": user.name.split()[0] if user.name else "there",  # First name for greeting
+            "full_name": user.name,
+            "background": f"AI enthusiast interested in: {', '.join(interests_list)}",
+            "interests": interests_list,
+            "preferences": {
+                "prefer_practical_and_code": True,
+                "prefer_technical_depth": True,
+                "prefer_open_source_and_agentic": True,
+                "prefer_research_breakthroughs": True,
+                "avoid_marketing_hype": True
+            },
+            "expertise_level": user.expertise_level or "Intermediate"
+        }
+
+    # ============================================================
+    # EMAIL LOG METHODS
+    # ============================================================
+
+    def log_email_sent(self, user_id: str, subject: str, articles_count: int, status: str = "sent") -> EmailLog:
+        """Record that an email was sent to a user."""
+        log = EmailLog(
+            user_id=user_id,
+            subject=subject,
+            articles_count=str(articles_count),
+            status=status
+        )
+        self.session.add(log)
+        self.session.commit()
+        return log
+
+    def get_user_count(self) -> int:
+        """Get total number of active users."""
+        return self.session.query(User).filter_by(is_active=True).count()

@@ -1,6 +1,7 @@
 import os
 import smtplib
 import html
+import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
@@ -8,11 +9,60 @@ import markdown
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 MY_EMAIL = os.getenv("MY_EMAIL")
 APP_PASSWORD = os.getenv("APP_PASSWORD")
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 
 
 def send_email(subject: str, body_text: str, body_html: str = None, recipients: list = None):
+    """Send email via Resend (primary) or Gmail SMTP (fallback)."""
+    resend_key = os.getenv("RESEND_API_KEY")
+    
+    if resend_key and recipients:
+        # Use Resend for multi-user delivery
+        _send_via_resend(subject, body_text, body_html, recipients, resend_key)
+    else:
+        # Fallback to Gmail SMTP for single-user / local dev
+        _send_via_gmail(subject, body_text, body_html, recipients)
+    
+    # Always save a local backup
+    _save_local_backup(body_html or body_text)
+
+
+def _send_via_resend(subject: str, body_text: str, body_html: str, recipients: list, api_key: str):
+    """Send email using Resend API (supports multi-user bulk delivery)."""
+    import requests
+    
+    from_email = os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev")
+    
+    for recipient in recipients:
+        try:
+            response = requests.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "from": f"AI Radar <{from_email}>",
+                    "to": [recipient],
+                    "subject": subject,
+                    "html": body_html or body_text,
+                    "text": body_text
+                }
+            )
+            if response.status_code in (200, 201):
+                logger.info(f"Email sent via Resend to {recipient}")
+            else:
+                logger.error(f"Resend error for {recipient}: {response.status_code} - {response.text}")
+        except Exception as e:
+            logger.error(f"Failed to send via Resend to {recipient}: {e}")
+
+
+def _send_via_gmail(subject: str, body_text: str, body_html: str, recipients: list = None):
+    """Send email using Gmail SMTP (single-user fallback)."""
     my_email = os.getenv("MY_EMAIL")
     app_password = os.getenv("APP_PASSWORD")
 
@@ -27,7 +77,7 @@ def send_email(subject: str, body_text: str, body_html: str = None, recipients: 
         with open(md_path, "w", encoding="utf-8") as f:
             f.write(body_text)
             
-        print(f"\n[INFO] MY_EMAIL or APP_PASSWORD not set. Digest saved locally to: {os.path.abspath(html_path)}")
+        logger.info(f"MY_EMAIL or APP_PASSWORD not set. Digest saved locally to: {os.path.abspath(html_path)}")
         return
     
     if recipients is None:
@@ -48,20 +98,27 @@ def send_email(subject: str, body_text: str, body_html: str = None, recipients: 
     if body_html:
         part2 = MIMEText(body_html, "html")
         msg.attach(part2)
-    
-    # Always save a local copy as backup
-    os.makedirs("output", exist_ok=True)
-    html_path = os.path.join("output", "latest_digest.html")
-    with open(html_path, "w", encoding="utf-8") as f:
-        f.write(body_html or body_text)
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
         smtp.login(my_email, app_password)
         smtp.sendmail(my_email, recipients, msg.as_string())
+    
+    logger.info(f"Email sent via Gmail SMTP to {recipients}")
+
+
+def _save_local_backup(content: str):
+    """Save a local HTML backup of the latest digest."""
+    try:
+        os.makedirs("output", exist_ok=True)
+        html_path = os.path.join("output", "latest_digest.html")
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(content)
+    except Exception:
+        pass  # Don't crash the pipeline over a backup file
 
 
 def markdown_to_html(markdown_text: str) -> str:
-    html = markdown.markdown(markdown_text, extensions=['extra', 'nl2br'])
+    html_content = markdown.markdown(markdown_text, extensions=['extra', 'nl2br'])
     return f"""<!DOCTYPE html>
 <html>
 <head>
@@ -137,29 +194,38 @@ def markdown_to_html(markdown_text: str) -> str:
     </style>
 </head>
 <body>
-{html}
+{html_content}
 </body>
 </html>"""
 
 
-def digest_to_html(digest_response) -> str:
+def digest_to_html(digest_response, user_name: str = "Grishmank Parate", user_email: str = None) -> str:
+    """Generate branded HTML email from a digest response.
+    
+    Args:
+        digest_response: EmailDigestResponse object
+        user_name: Full name of the recipient (for dynamic branding)
+        user_email: Email for unsubscribe link (optional)
+    """
     from app.agent.email_agent import EmailDigestResponse
     
     if not isinstance(digest_response, EmailDigestResponse):
         return markdown_to_html(digest_response.to_markdown() if hasattr(digest_response, 'to_markdown') else str(digest_response))
     
+    first_name = user_name.split()[0] if user_name else "there"
+    
     html_parts = []
     greeting_html = markdown.markdown(digest_response.introduction.greeting, extensions=['extra', 'nl2br'])
     introduction_html = markdown.markdown(digest_response.introduction.introduction, extensions=['extra', 'nl2br'])
     
-    # Header Branding
-    html_parts.append("""
+    # Header Branding (dynamic per user)
+    html_parts.append(f"""
     <div style="border-bottom: 2px solid #2563eb; padding-bottom: 12px; margin-bottom: 20px;">
         <div style="font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: #2563eb; text-transform: uppercase;">
-            GenAI Intelligence Digest • IIITDM Kancheepuram
+            AI Radar • Personalized AI Newsletter
         </div>
         <h1 style="font-size: 22px; font-weight: 700; color: #0f172a; margin: 6px 0 0 0; letter-spacing: -0.5px;">
-            Grishmank's Daily AI Radar
+            {first_name}'s Daily AI Digest
         </h1>
     </div>
     """)
@@ -175,11 +241,15 @@ def digest_to_html(digest_response) -> str:
         html_parts.append(f'<p><a href="{html.escape(article.url)}" class="article-link">Read full story →</a></p>')
         html_parts.append('<hr>')
     
-    # Footer
-    html_parts.append("""
+    # Footer with unsubscribe link
+    unsubscribe_html = ""
+    if user_email:
+        unsubscribe_html = f' • <a href="mailto:grishmankp@gmail.com?subject=Unsubscribe&body=Please unsubscribe {user_email}" style="color: #94a3b8; text-decoration: underline;">Unsubscribe</a>'
+    
+    html_parts.append(f"""
     <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #64748b; text-align: center;">
-        <p style="margin: 0;">Automated Multi-Agent AI System • Curated for <strong>Grishmank Parate</strong></p>
-        <p style="margin: 4px 0 0 0;">Powered by Groq Open-Source LLMs & SQLite</p>
+        <p style="margin: 0;">AI Radar • Multi-Agent AI Newsletter • Curated for <strong>{html.escape(user_name)}</strong></p>
+        <p style="margin: 4px 0 0 0;">Powered by Groq Open-Source LLMs{unsubscribe_html}</p>
     </div>
     """)
     

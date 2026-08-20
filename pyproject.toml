@@ -1,7 +1,7 @@
 [project]
 name = "ai-news-aggregator"
-version = "1.0.0"
-description = "Multi-agent GenAI pipeline that scrapes, summarizes, curates, and delivers personalized AI news via email — powered by Groq open-source LLMs"
+version = "2.0.0"
+description = "Multi-user AI news aggregation SaaS with multi-agent GenAI pipeline, Neon PostgreSQL, Resend email delivery, and Vercel registration frontend"
 authors = [{name = "Grishmank Parate", email = "grishmankp@gmail.com"}]
 readme = "README.md"
 requires-python = ">=3.12"

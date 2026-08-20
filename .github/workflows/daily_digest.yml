@@ -9,7 +9,7 @@ on:
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -23,11 +23,12 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install openai pydantic python-dotenv feedparser beautifulsoup4 markdown markdownify sqlalchemy youtube-transcript-api
+          pip install openai pydantic python-dotenv feedparser beautifulsoup4 markdown markdownify sqlalchemy youtube-transcript-api psycopg2-binary requests
 
       - name: Initialize Database
         env:
-          USE_POSTGRES: "false"
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          USE_POSTGRES: "true"
         run: |
           python app/database/create_tables.py
 
@@ -37,7 +38,9 @@ jobs:
           GROQ_MODEL: "groq/compound-mini"
           MY_EMAIL: ${{ secrets.MY_EMAIL }}
           APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
-          USE_POSTGRES: "false"
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          USE_POSTGRES: "true"
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: |
           python main.py
 
@@ -48,7 +51,9 @@ jobs:
           GROQ_MODEL: "groq/compound-mini"
           MY_EMAIL: ${{ secrets.MY_EMAIL }}
           APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
-          USE_POSTGRES: "false"
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          USE_POSTGRES: "true"
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: |
           echo "First attempt failed. Retrying after 30s..."
           sleep 30

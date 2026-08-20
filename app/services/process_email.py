@@ -20,9 +20,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestResponse:
-    curator = CuratorAgent(USER_PROFILE)
-    email_agent = EmailAgent(USER_PROFILE)
+def generate_email_digest(hours: int = 24, top_n: int = 10, user_profile: dict = None) -> EmailDigestResponse:
+    """Generate a personalized email digest for a given user profile.
+    
+    Args:
+        hours: How many hours back to look for digests
+        top_n: Number of top articles to include
+        user_profile: User profile dict (falls back to hardcoded USER_PROFILE if None)
+    """
+    profile = user_profile or USER_PROFILE
+    curator = CuratorAgent(profile)
+    email_agent = EmailAgent(profile)
     repo = Repository()
     
     digests = repo.get_recent_digests(hours=hours)
@@ -70,10 +78,11 @@ def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestRespon
 
 
 def send_digest_email(hours: int = 24, top_n: int = 10) -> dict:
+    """Send digest to the default single user (backward compatible)."""
     try:
         result = generate_email_digest(hours=hours, top_n=top_n)
         markdown_content = result.to_markdown()
-        html_content = digest_to_html(result)
+        html_content = digest_to_html(result, user_name="Grishmank Parate")
         
         subject = f"Grishmank's Daily AI Radar - {result.introduction.greeting.split('for ')[-1] if 'for ' in result.introduction.greeting else 'Today'}"
         
@@ -97,12 +106,118 @@ def send_digest_email(hours: int = 24, top_n: int = 10) -> dict:
         }
 
 
-if __name__ == "__main__":
-    result = send_digest_email(hours=24, top_n=10)
-    if result["success"]:
-        print("\n=== Email Digest Sent ===")
-        print(f"Subject: {result['subject']}")
-        print(f"Articles: {result['articles_count']}")
-    else:
-        print(f"Error: {result['error']}")
+def send_digest_to_all_users(hours: int = 24, top_n: int = 10) -> dict:
+    """Send personalized digest emails to ALL active users in the database.
+    
+    Flow:
+    1. Get all active users from the database
+    2. For each user, generate a personalized ranked digest using their profile
+    3. Send the email via Resend (or Gmail fallback)
+    4. Log the email delivery status
+    
+    Falls back to single-user mode if no users are registered.
+    """
+    repo = Repository()
+    users = repo.get_all_active_users()
+    
+    if not users:
+        logger.info("No registered users found. Falling back to single-user mode.")
+        return send_digest_email(hours=hours, top_n=top_n)
+    
+    logger.info(f"Sending personalized digests to {len(users)} active users")
+    
+    results = {
+        "success": True,
+        "total_users": len(users),
+        "sent": 0,
+        "failed": 0,
+        "details": []
+    }
+    
+    for user in users:
+        user_profile = repo.get_user_profile_dict(user)
+        
+        try:
+            logger.info(f"Generating digest for {user.name} ({user.email})")
+            
+            # Generate personalized digest
+            email_digest = generate_email_digest(
+                hours=hours, 
+                top_n=top_n, 
+                user_profile=user_profile
+            )
+            
+            # Render personalized HTML
+            markdown_content = email_digest.to_markdown()
+            html_content = digest_to_html(
+                email_digest, 
+                user_name=user.name,
+                user_email=user.email
+            )
+            
+            # Dynamic subject line
+            first_name = user.name.split()[0] if user.name else "there"
+            subject = f"{first_name}'s AI Radar - {email_digest.introduction.greeting.split('for ')[-1] if 'for ' in email_digest.introduction.greeting else 'Today'}"
+            
+            # Send email
+            send_email(
+                subject=subject,
+                body_text=markdown_content,
+                body_html=html_content,
+                recipients=[user.email]
+            )
+            
+            # Log successful delivery
+            repo.log_email_sent(
+                user_id=user.id,
+                subject=subject,
+                articles_count=len(email_digest.articles),
+                status="sent"
+            )
+            
+            results["sent"] += 1
+            results["details"].append({
+                "user": user.email,
+                "status": "sent",
+                "articles": len(email_digest.articles)
+            })
+            
+            logger.info(f"✓ Email sent to {user.email} with {len(email_digest.articles)} articles")
+            
+        except Exception as e:
+            results["failed"] += 1
+            results["details"].append({
+                "user": user.email,
+                "status": "failed",
+                "error": str(e)
+            })
+            
+            # Log failed delivery
+            try:
+                repo.log_email_sent(
+                    user_id=user.id,
+                    subject="Failed",
+                    articles_count=0,
+                    status="failed"
+                )
+            except Exception:
+                pass
+            
+            logger.error(f"✗ Failed to send to {user.email}: {e}")
+    
+    results["articles_count"] = results["sent"]  # For backward compatibility
+    if results["failed"] > 0 and results["sent"] == 0:
+        results["success"] = False
+    
+    logger.info(f"Multi-user delivery complete: {results['sent']} sent, {results['failed']} failed")
+    return results
 
+
+if __name__ == "__main__":
+    result = send_digest_to_all_users(hours=24, top_n=10)
+    if result["success"]:
+        print(f"\n=== Digest Delivery Complete ===")
+        print(f"Sent: {result.get('sent', 1)}")
+        print(f"Failed: {result.get('failed', 0)}")
+    else:
+        print(f"Error: {result.get('error', 'Unknown')}")

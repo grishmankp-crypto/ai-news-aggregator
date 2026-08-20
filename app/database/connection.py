@@ -6,6 +6,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def get_database_url() -> str:
+    # Priority 1: Standard DATABASE_URL (Neon, Supabase, Railway, Heroku, etc.)
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        return database_url
+
+    # Priority 2: Manual PostgreSQL config
     use_postgres = os.getenv("USE_POSTGRES", "false").lower() in ("true", "1")
     if use_postgres:
         user = os.getenv("POSTGRES_USER", "postgres")
@@ -14,19 +20,24 @@ def get_database_url() -> str:
         port = os.getenv("POSTGRES_PORT", "5432")
         db = os.getenv("POSTGRES_DB", "ai_news_aggregator")
         return f"postgresql://{user}:{password}@{host}:{port}/{db}"
-    else:
-        db_path = os.getenv("SQLITE_PATH", "ai_news_aggregator.db")
-        return f"sqlite:///{db_path}"
+
+    # Priority 3: Local SQLite (zero-config default)
+    db_path = os.getenv("SQLITE_PATH", "ai_news_aggregator.db")
+    return f"sqlite:///{db_path}"
 
 db_url = get_database_url()
 if db_url.startswith("sqlite"):
     engine = create_engine(db_url, connect_args={"check_same_thread": False})
 else:
-    engine = create_engine(db_url)
+    engine = create_engine(
+        db_url,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+        pool_recycle=300,
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_session():
     return SessionLocal()
-
-
