@@ -64,6 +64,14 @@ target/
 *.rdb
 output/
 
+# Node / Next.js
+node_modules/
+.next/
+out/
+.env*.local
+frontend/.next/
+frontend/node_modules/
+
 # Pycharm
 .idea
 
