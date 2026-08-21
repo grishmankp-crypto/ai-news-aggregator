@@ -2,8 +2,8 @@ name: Daily AI News Aggregator & Emailer
 
 on:
   schedule:
-    # Runs every day at 08:00 UTC (1:30 PM IST)
-    - cron: '0 8 * * *'
+    # Runs every day at 06:00 UTC (11:30 AM IST)
+    - cron: '0 6 * * *'
   workflow_dispatch: # Allows manual trigger from GitHub UI
 
 jobs:

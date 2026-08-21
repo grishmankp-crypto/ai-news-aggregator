@@ -66,11 +66,11 @@ Preferences:
         if not digests:
             return []
         
-        # Limit to candidate pool of max 25 digests to stay within API token limits
-        digests = digests[:25]
+        # Limit to candidate pool of max 15 digests to stay well within token limits
+        digests = digests[:15]
         
         digest_list = "\n\n".join([
-            f"ID: {d['id']}\nTitle: {d['title']}\nSummary: {d['summary']}\nType: {d['article_type']}"
+            f"ID: {d['id']}\nTitle: {d['title']}\nSummary: {d['summary'][:200]}...\nType: {d['article_type']}"
             for d in digests
         ])
         
