@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Radar | Personalized AI News",
-  description: "Get a daily curated AI newsletter powered by multi-agent AI. Personalized to your interests, delivered every morning.",
+  title: "AI Radar",
+  description: "Get a daily curated AI newsletter powered by multi-agent AI",
 };
 
 export default function RootLayout({
