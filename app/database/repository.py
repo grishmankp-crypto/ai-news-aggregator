@@ -232,11 +232,23 @@ class Repository:
         self.session.commit()
         return digest
     
-    def get_recent_digests(self, hours: int = 24) -> List[Dict[str, Any]]:
+    def get_recent_digests(self, hours: int = 24, limit: int = 25) -> List[Dict[str, Any]]:
         cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
         digests = self.session.query(Digest).filter(
             Digest.created_at >= cutoff_time
         ).order_by(Digest.created_at.desc()).all()
+        
+        # Resilient fallback: If no digests in last 24h (e.g. weekend/slow news day),
+        # fall back to the most recent digests from the last 7 days so emails are never empty!
+        if not digests:
+            fallback_cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+            digests = self.session.query(Digest).filter(
+                Digest.created_at >= fallback_cutoff
+            ).order_by(Digest.created_at.desc()).limit(limit).all()
+        
+        # If still empty (e.g. fresh DB), get the latest available digests regardless of date
+        if not digests:
+            digests = self.session.query(Digest).order_by(Digest.created_at.desc()).limit(limit).all()
         
         return [
             {
