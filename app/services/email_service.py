@@ -63,8 +63,8 @@ def _send_via_resend(subject: str, body_text: str, body_html: str, recipients: l
 
 def _send_via_gmail(subject: str, body_text: str, body_html: str, recipients: list = None):
     """Send email using Gmail SMTP (single-user fallback)."""
-    my_email = os.getenv("MY_EMAIL")
-    app_password = os.getenv("APP_PASSWORD")
+    my_email = (os.getenv("MY_EMAIL") or "").strip().strip('"').strip("'")
+    app_password = (os.getenv("APP_PASSWORD") or "").replace(" ", "").strip().strip('"').strip("'")
 
     # If SMTP credentials are missing, save locally as HTML / MD file
     if not my_email or not app_password:
