@@ -1,4 +1,5 @@
 import sys
+import time
 from pathlib import Path
 import logging
 from dotenv import load_dotenv
@@ -193,6 +194,9 @@ def send_digest_to_all_users(hours: int = 24, top_n: int = 10) -> dict:
             })
             
             logger.info(f"✓ Email sent to {u['email']} with {len(email_digest.articles)} articles")
+            
+            # Short pause between users to prevent hitting Groq RPM limits
+            time.sleep(3)
             
         except Exception as e:
             results["failed"] += 1
