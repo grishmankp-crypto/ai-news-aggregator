@@ -99,11 +99,17 @@ def _send_via_gmail(subject: str, body_text: str, body_html: str, recipients: li
         part2 = MIMEText(body_html, "html")
         msg.attach(part2)
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-        smtp.login(my_email, app_password)
-        smtp.sendmail(my_email, recipients, msg.as_string())
-    
-    logger.info(f"Email sent via Gmail SMTP to {recipients}")
+    masked_pass = f"{app_password[:2]}***{app_password[-2:]} (len: {len(app_password)})" if len(app_password) >= 4 else f"(len: {len(app_password)})"
+    logger.info(f"Authenticating Gmail SMTP with user='{my_email}', password={masked_pass}")
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+            smtp.login(my_email, app_password)
+            smtp.sendmail(my_email, recipients, msg.as_string())
+        logger.info(f"Email sent via Gmail SMTP to {recipients}")
+    except smtplib.SMTPAuthenticationError as e:
+        logger.error(f"Gmail SMTP Authentication Failed! user='{my_email}', password_info={masked_pass}. Check your GitHub Secret 'MY_EMAIL' and 'APP_PASSWORD'. Error: {e}")
+        raise e
 
 
 def _save_local_backup(content: str):
