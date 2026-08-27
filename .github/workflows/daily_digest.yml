@@ -2,14 +2,14 @@ name: Daily AI News Aggregator & Emailer
 
 on:
   schedule:
-    # Runs every day at 06:15 UTC (11:45 AM IST) to avoid GitHub's top-of-the-hour queue drops
-    - cron: '15 6 * * *'
+    # Runs every day at 03:00 UTC (8:30 AM IST)
+    - cron: '0 3 * * *'
   workflow_dispatch: # Allows manual trigger from GitHub UI
 
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -36,6 +36,8 @@ jobs:
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_MODEL: "groq/compound-mini"
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
           MY_EMAIL: ${{ secrets.MY_EMAIL }}
           APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -48,6 +50,8 @@ jobs:
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_MODEL: "groq/compound-mini"
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
           MY_EMAIL: ${{ secrets.MY_EMAIL }}
           APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

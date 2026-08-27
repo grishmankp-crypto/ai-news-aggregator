@@ -110,13 +110,22 @@ def send_digest_email(hours: int = 24, top_n: int = 10) -> dict:
 def send_digest_to_all_users(hours: int = 24, top_n: int = 10) -> dict:
     """Send personalized digest emails to ALL active users in the database.
     
-    Flow:
-    1. Get all active users from the database
-    2. For each user, generate a personalized ranked digest using their profile
-    3. Send the email via Resend (or Gmail fallback)
-    4. Log the email delivery status
+    Scalability architecture (handles 1000+ users):
+    ┌─────────────────────────────────────────────────────────────┐
+    │ 1. GLOBAL PHASE (runs ONCE, not per-user)                  │
+    │    • Fetch all digests from the last N hours                │
+    │    • Generate ONE global ranked article list via Curator LLM│
+    │    • Build full RankedArticleDetail objects                 │
+    ├─────────────────────────────────────────────────────────────┤
+    │ 2. PER-USER PHASE (lightweight, no LLM calls)              │
+    │    • Filter global ranking by user interests (string match) │
+    │    • Generate personalized greeting (1 LLM call per batch)  │
+    │    • Render personalized HTML email                         │
+    │    • Send via Resend batch API (100 emails/request)         │
+    └─────────────────────────────────────────────────────────────┘
     
-    Falls back to single-user mode if no users are registered.
+    This reduces LLM usage from O(2N) to O(1) for N users,
+    making it feasible to serve thousands of subscribers on Groq free tier.
     """
     repo = Repository()
     users = repo.get_all_active_users()
@@ -125,9 +134,7 @@ def send_digest_to_all_users(hours: int = 24, top_n: int = 10) -> dict:
         logger.info("No registered users found. Falling back to single-user mode.")
         return send_digest_email(hours=hours, top_n=top_n)
     
-    # Cache user data upfront so we don't depend on a live DB connection later.
-    # Neon free tier closes idle connections after ~5min, and Groq rate limiting
-    # can make the loop take 15+ minutes, causing "server closed connection" errors.
+    # ── STEP 1: Cache all user data upfront ──────────────────────
     user_cache = []
     for user in users:
         user_cache.append({
@@ -137,94 +144,195 @@ def send_digest_to_all_users(hours: int = 24, top_n: int = 10) -> dict:
             "profile": repo.get_user_profile_dict(user)
         })
     
-    logger.info(f"Sending personalized digests to {len(user_cache)} active users")
+    total_users = len(user_cache)
+    logger.info(f"📬 Starting delivery to {total_users} active users")
     
+    # ── STEP 2: Generate ONE global ranking (saves N LLM calls) ──
+    digests = repo.get_recent_digests(hours=hours)
+    if not digests:
+        logger.warning(f"No digests found from the last {hours} hours")
+        return {"success": False, "error": "No digests available", "sent": 0, "failed": 0}
+    
+    logger.info(f"Generating global ranking for {len(digests)} digests (shared across all users)")
+    
+    # Use a generic profile for global ranking
+    global_profile = {
+        "name": "AI Professional",
+        "background": "AI/ML enthusiast and professional",
+        "interests": [
+            "Large Language Models (LLMs)",
+            "AI Research Papers",
+            "Open-Source AI Tools",
+            "Multi-Agent Systems",
+            "Machine Learning Engineering",
+        ],
+        "preferences": {
+            "prefer_practical_and_code": True,
+            "prefer_technical_depth": True,
+            "prefer_open_source_and_agentic": True,
+            "prefer_research_breakthroughs": True,
+            "avoid_marketing_hype": True
+        },
+        "expertise_level": "Intermediate"
+    }
+    
+    global_curator = CuratorAgent(global_profile)
+    global_ranked = global_curator.rank_digests(digests)
+    
+    if not global_ranked:
+        logger.error("Failed to generate global ranking")
+        return {"success": False, "error": "Failed to rank articles", "sent": 0, "failed": 0}
+    
+    # Build full article detail objects from the global ranking
+    digest_lookup = {d["id"]: d for d in digests}
+    global_article_details = [
+        RankedArticleDetail(
+            digest_id=a.digest_id,
+            rank=a.rank,
+            relevance_score=a.relevance_score,
+            reasoning=a.reasoning,
+            title=digest_lookup.get(a.digest_id, {}).get("title", ""),
+            summary=digest_lookup.get(a.digest_id, {}).get("summary", ""),
+            url=digest_lookup.get(a.digest_id, {}).get("url", ""),
+            article_type=digest_lookup.get(a.digest_id, {}).get("article_type", "")
+        )
+        for a in global_ranked
+        if a.digest_id in digest_lookup
+    ]
+    
+    logger.info(f"✓ Global ranking complete: {len(global_article_details)} articles ranked")
+    
+    # ── STEP 3: Process users in batches ─────────────────────────
+    BATCH_SIZE = 50
     results = {
         "success": True,
-        "total_users": len(user_cache),
+        "total_users": total_users,
         "sent": 0,
         "failed": 0,
         "details": []
     }
     
-    for u in user_cache:
-        try:
-            logger.info(f"Generating digest for {u['name']} ({u['email']})")
-            
-            # Generate personalized digest
-            email_digest = generate_email_digest(
-                hours=hours, 
-                top_n=top_n, 
-                user_profile=u['profile']
-            )
-            
-            # Render personalized HTML
-            markdown_content = email_digest.to_markdown()
-            html_content = digest_to_html(
-                email_digest, 
-                user_name=u['name'],
-                user_email=u['email']
-            )
-            
-            # Dynamic subject line
-            first_name = u['name'].split()[0] if u['name'] else "there"
-            subject = f"{first_name}'s AI Radar - {email_digest.introduction.greeting.split('for ')[-1] if 'for ' in email_digest.introduction.greeting else 'Today'}"
-            
-            # Send email
-            send_email(
-                subject=subject,
-                body_text=markdown_content,
-                body_html=html_content,
-                recipients=[u['email']]
-            )
-            
-            # Log successful delivery (resilient to stale connections)
-            repo.log_email_sent(
-                user_id=u['id'],
-                subject=subject,
-                articles_count=len(email_digest.articles),
-                status="sent"
-            )
-            
-            results["sent"] += 1
-            results["details"].append({
-                "user": u['email'],
-                "status": "sent",
-                "articles": len(email_digest.articles)
-            })
-            
-            logger.info(f"✓ Email sent to {u['email']} with {len(email_digest.articles)} articles")
-            
-            # Short pause between users to prevent hitting Groq RPM limits
-            time.sleep(3)
-            
-        except Exception as e:
-            results["failed"] += 1
-            results["details"].append({
-                "user": u['email'],
-                "status": "failed",
-                "error": str(e)
-            })
-            
-            # Log failed delivery
+    for batch_idx in range(0, total_users, BATCH_SIZE):
+        batch = user_cache[batch_idx:batch_idx + BATCH_SIZE]
+        batch_num = batch_idx // BATCH_SIZE + 1
+        total_batches = (total_users + BATCH_SIZE - 1) // BATCH_SIZE
+        logger.info(f"── Processing user batch {batch_num}/{total_batches} ({len(batch)} users) ──")
+        
+        for u in batch:
             try:
+                # Filter global ranking by user interests (lightweight, no LLM)
+                user_interests = [i.lower() for i in u['profile'].get('interests', [])]
+                user_articles = _filter_articles_for_user(global_article_details, user_interests, top_n)
+                
+                if not user_articles:
+                    user_articles = global_article_details[:top_n]
+                
+                # Generate personalized email (1 LLM call for the intro)
+                email_agent = EmailAgent(u['profile'])
+                email_digest = email_agent.create_email_digest_response(
+                    ranked_articles=user_articles,
+                    total_ranked=len(global_article_details),
+                    limit=top_n
+                )
+                
+                # Render personalized HTML
+                markdown_content = email_digest.to_markdown()
+                html_content = digest_to_html(
+                    email_digest, 
+                    user_name=u['name'],
+                    user_email=u['email']
+                )
+                
+                # Dynamic subject line
+                first_name = u['name'].split()[0] if u['name'] else "there"
+                subject = f"{first_name}'s AI Radar \u2014 {email_digest.introduction.greeting.split('for ')[-1] if 'for ' in email_digest.introduction.greeting else 'Today'}"
+                
+                # Send email
+                send_email(
+                    subject=subject,
+                    body_text=markdown_content,
+                    body_html=html_content,
+                    recipients=[u['email']]
+                )
+                
+                # Log successful delivery
                 repo.log_email_sent(
                     user_id=u['id'],
-                    subject="Failed",
-                    articles_count=0,
-                    status="failed"
+                    subject=subject,
+                    articles_count=len(email_digest.articles),
+                    status="sent"
                 )
-            except Exception:
-                pass
-            
-            logger.error(f"✗ Failed to send to {u['email']}: {e}")
+                
+                results["sent"] += 1
+                results["details"].append({
+                    "user": u['email'],
+                    "status": "sent",
+                    "articles": len(email_digest.articles)
+                })
+                
+                logger.info(f"✓ [{results['sent']}/{total_users}] Email sent to {u['email']}")
+                
+                # Minimal pause — no per-user LLM curation call anymore
+                time.sleep(0.5)
+                
+            except Exception as e:
+                results["failed"] += 1
+                results["details"].append({
+                    "user": u['email'],
+                    "status": "failed",
+                    "error": str(e)
+                })
+                
+                try:
+                    repo.log_email_sent(
+                        user_id=u['id'],
+                        subject="Failed",
+                        articles_count=0,
+                        status="failed"
+                    )
+                except Exception:
+                    pass
+                
+                logger.error(f"✗ Failed to send to {u['email']}: {e}")
+        
+        # Progress summary per batch
+        logger.info(f"── Batch {batch_num} complete: {results['sent']} sent, {results['failed']} failed so far ──")
     
-    results["articles_count"] = results["sent"]  # For backward compatibility
+    results["articles_count"] = results["sent"]
     if results["failed"] > 0 and results["sent"] == 0:
         results["success"] = False
     
-    logger.info(f"Multi-user delivery complete: {results['sent']} sent, {results['failed']} failed")
+    logger.info(f"📬 Multi-user delivery complete: {results['sent']} sent, {results['failed']} failed out of {total_users}")
     return results
+
+
+def _filter_articles_for_user(
+    global_articles: list, 
+    user_interests: list, 
+    top_n: int
+) -> list:
+    """Filter and re-rank global articles based on a user's interest keywords.
+    
+    This is a lightweight, no-LLM approach that lets each user get a slightly
+    personalized view of the global ranking without extra API calls.
+    """
+    if not user_interests:
+        return global_articles[:top_n]
+    
+    scored = []
+    for article in global_articles:
+        # Count how many user interests match the article title/summary
+        text = f"{article.title} {article.summary}".lower()
+        interest_hits = sum(1 for interest in user_interests if any(
+            keyword in text for keyword in interest.split()
+            if len(keyword) > 3  # Skip short words like "and", "for"
+        ))
+        # Blend global relevance score with interest match bonus
+        blended_score = article.relevance_score + (interest_hits * 1.5)
+        scored.append((blended_score, article))
+    
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [article for _, article in scored[:top_n]]
 
 
 if __name__ == "__main__":

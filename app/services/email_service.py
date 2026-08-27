@@ -32,33 +32,97 @@ def send_email(subject: str, body_text: str, body_html: str = None, recipients: 
 
 
 def _send_via_resend(subject: str, body_text: str, body_html: str, recipients: list, api_key: str):
-    """Send email using Resend API (supports multi-user bulk delivery)."""
+    """Send email using Resend API with batch support for high-throughput delivery.
+    
+    Uses the /emails/batch endpoint to send up to 100 emails per API call,
+    dramatically reducing network overhead for thousands of subscribers.
+    """
     import requests
     
     from_email = os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev")
     
-    for recipient in recipients:
-        try:
-            response = requests.post(
-                "https://api.resend.com/emails",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
+    # Resend batch API supports up to 100 emails per request
+    BATCH_SIZE = 100
+    
+    for batch_start in range(0, len(recipients), BATCH_SIZE):
+        batch = recipients[batch_start:batch_start + BATCH_SIZE]
+        
+        if len(batch) == 1:
+            # Single recipient — use the standard endpoint
+            try:
+                response = requests.post(
+                    "https://api.resend.com/emails",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "from": f"AI Radar <{from_email}>",
+                        "to": [batch[0]],
+                        "subject": subject,
+                        "html": body_html or body_text,
+                        "text": body_text
+                    },
+                    timeout=30
+                )
+                if response.status_code in (200, 201):
+                    logger.info(f"Email sent via Resend to {batch[0]}")
+                else:
+                    logger.error(f"Resend error for {batch[0]}: {response.status_code} - {response.text}")
+            except Exception as e:
+                logger.error(f"Failed to send via Resend to {batch[0]}: {e}")
+        else:
+            # Multiple recipients — use the batch endpoint for efficiency
+            batch_payload = [
+                {
                     "from": f"AI Radar <{from_email}>",
                     "to": [recipient],
                     "subject": subject,
                     "html": body_html or body_text,
                     "text": body_text
                 }
-            )
-            if response.status_code in (200, 201):
-                logger.info(f"Email sent via Resend to {recipient}")
-            else:
-                logger.error(f"Resend error for {recipient}: {response.status_code} - {response.text}")
-        except Exception as e:
-            logger.error(f"Failed to send via Resend to {recipient}: {e}")
+                for recipient in batch
+            ]
+            try:
+                response = requests.post(
+                    "https://api.resend.com/emails/batch",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json=batch_payload,
+                    timeout=60
+                )
+                if response.status_code in (200, 201):
+                    logger.info(f"Batch email sent via Resend to {len(batch)} recipients (batch {batch_start // BATCH_SIZE + 1})")
+                else:
+                    logger.error(f"Resend batch error: {response.status_code} - {response.text}")
+                    # Fallback: try sending individually
+                    for recipient in batch:
+                        try:
+                            resp = requests.post(
+                                "https://api.resend.com/emails",
+                                headers={
+                                    "Authorization": f"Bearer {api_key}",
+                                    "Content-Type": "application/json"
+                                },
+                                json={
+                                    "from": f"AI Radar <{from_email}>",
+                                    "to": [recipient],
+                                    "subject": subject,
+                                    "html": body_html or body_text,
+                                    "text": body_text
+                                },
+                                timeout=30
+                            )
+                            if resp.status_code in (200, 201):
+                                logger.info(f"Fallback email sent to {recipient}")
+                            else:
+                                logger.error(f"Fallback failed for {recipient}: {resp.status_code}")
+                        except Exception as e:
+                            logger.error(f"Fallback send failed for {recipient}: {e}")
+            except Exception as e:
+                logger.error(f"Resend batch request failed: {e}")
 
 
 def _send_via_gmail(subject: str, body_text: str, body_html: str, recipients: list = None):

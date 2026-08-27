@@ -8,6 +8,7 @@ from app.config import YOUTUBE_CHANNELS
 from app.scrapers.youtube import YouTubeScraper, ChannelVideo
 from app.scrapers.openai import OpenAIScraper, OpenAIArticle
 from app.scrapers.anthropic import AnthropicScraper, AnthropicArticle
+from app.scrapers.hackernews import HackerNewsScraper, HackerNewsStory
 from app.database.repository import Repository
 
 
@@ -16,6 +17,7 @@ def run_scrapers(hours: int = 24) -> dict:
     youtube_scraper = YouTubeScraper()
     openai_scraper = OpenAIScraper()
     anthropic_scraper = AnthropicScraper()
+    hn_scraper = HackerNewsScraper()
     repo = Repository()
     
     youtube_videos = []
@@ -70,10 +72,29 @@ def run_scrapers(hours: int = 24) -> dict:
         ]
         repo.bulk_create_anthropic_articles(article_dicts)
     
+    # Scrape Hacker News AI stories
+    hn_stories = hn_scraper.get_articles(hours=hours)
+    if hn_stories:
+        story_dicts = [
+            {
+                "story_id": s.story_id,
+                "title": s.title,
+                "url": s.url,
+                "points": s.points,
+                "num_comments": s.num_comments,
+                "author": s.author,
+                "published_at": s.published_at,
+                "description": s.description
+            }
+            for s in hn_stories
+        ]
+        repo.bulk_create_hackernews_stories(story_dicts)
+    
     return {
         "youtube": youtube_videos,
         "openai": openai_articles,
         "anthropic": anthropic_articles,
+        "hackernews": hn_stories,
     }
 
 

@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
-from .models import YouTubeVideo, OpenAIArticle, AnthropicArticle, Digest, User, EmailLog
+from .models import YouTubeVideo, OpenAIArticle, AnthropicArticle, HackerNewsStory, Digest, User, EmailLog
 from .connection import get_session
 
 
@@ -121,6 +121,27 @@ class Repository:
             self.session.commit()
         return len(new_articles)
     
+    def bulk_create_hackernews_stories(self, stories: List[dict]) -> int:
+        """Bulk insert Hacker News stories, skipping duplicates."""
+        new_stories = []
+        for s in stories:
+            existing = self.session.query(HackerNewsStory).filter_by(story_id=s["story_id"]).first()
+            if not existing:
+                new_stories.append(HackerNewsStory(
+                    story_id=s["story_id"],
+                    title=s["title"],
+                    url=s["url"],
+                    points=str(s.get("points", 0)),
+                    num_comments=str(s.get("num_comments", 0)),
+                    author=s.get("author", "unknown"),
+                    published_at=s["published_at"],
+                    description=s.get("description", "")
+                ))
+        if new_stories:
+            self.session.add_all(new_stories)
+            self.session.commit()
+        return len(new_stories)
+
     def get_anthropic_articles_without_markdown(self, limit: Optional[int] = None) -> List[AnthropicArticle]:
         query = self.session.query(AnthropicArticle).filter(AnthropicArticle.markdown.is_(None))
         if limit:
@@ -199,6 +220,20 @@ class Repository:
                     "url": article.url,
                     "content": article.markdown or article.description or "",
                     "published_at": article.published_at
+                })
+        
+        # Hacker News stories
+        hn_stories = self.session.query(HackerNewsStory).all()
+        for story in hn_stories:
+            key = f"hackernews:{story.story_id}"
+            if key not in seen_ids:
+                articles.append({
+                    "type": "hackernews",
+                    "id": story.story_id,
+                    "title": story.title,
+                    "url": story.url,
+                    "content": story.description or story.title,
+                    "published_at": story.published_at
                 })
         
         if limit:

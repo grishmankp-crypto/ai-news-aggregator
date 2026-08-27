@@ -39,10 +39,12 @@ if db_url.startswith("sqlite"):
 else:
     engine = create_engine(
         db_url,
-        pool_size=5,
-        max_overflow=10,
+        pool_size=20,
+        max_overflow=40,
         pool_pre_ping=True,
         pool_recycle=60,  # Recycle connections every 60s (Neon free tier is aggressive)
+        pool_timeout=30,  # Wait up to 30s for a connection from the pool
+        connect_args={"connect_timeout": 10},  # TCP connect timeout
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

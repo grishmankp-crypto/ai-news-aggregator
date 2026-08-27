@@ -53,6 +53,20 @@ class AnthropicArticle(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class HackerNewsStory(Base):
+    __tablename__ = "hackernews_stories"
+    
+    story_id = Column(String, primary_key=True)
+    title = Column(String, nullable=False)
+    url = Column(String, nullable=False)
+    points = Column(String, default="0")  # Store as string for SQLite compat
+    num_comments = Column(String, default="0")
+    author = Column(String, default="unknown")
+    published_at = Column(DateTime, nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class Digest(Base):
     __tablename__ = "digests"
     
